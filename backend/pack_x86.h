@@ -91,5 +91,4 @@ typedef void(*compress_functions_)(PE *pe);
 int compress_file(char* argv);
 int pe_read(const char* filename, PE *pe);
 int pe_write(const char* filename, PE *pe);
-void AddSection(const char* sname, LPVOID _section, DWORD _section_size, DWORD _entry_point_offset, PE *pe);
 BYTE * comp(BYTE* input, int in_size, int * out_size);

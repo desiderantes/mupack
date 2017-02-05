@@ -8,13 +8,10 @@
 #include "xbyak/xbyak.h"
 #include "../logger.h"
 #include "Types.h"
-#include "pack_relocations.hpp"
-#ifndef DEMO
-extern "C" DWORD _stdcall get_lzmadepackersize();
-extern "C" DWORD _stdcall get_lzmadepackerptr();
-#endif // !DEMO
 extern "C" DWORD _stdcall get_frdepackersize();
 extern "C" DWORD _stdcall get_frdepackerptr();
+extern "C" DWORD _stdcall get_lzmadepackersize();
+extern "C" DWORD _stdcall get_lzmadepackerptr();
 
 
 
@@ -22,7 +19,7 @@ extern "C" DWORD _stdcall get_frdepackerptr();
 #define x86_Convert_Init(state) { state = 0; }
 
 #define CALCULATE_ADDRESS(base, offset) (((DWORD)(base)) + (offset))
-#define MARK_END_OF_FUNCTION(funcname) void funcname ## _eof_marker() { }
+#define MARK_END_OF_FUNCTION(funcname) static void funcname ## _eof_marker() { }
 #define SIZEOF_FUNCTION(funcname) ((unsigned long)&funcname ## _eof_marker - (unsigned long)&funcname)
 
 #pragma pack(push, 1)
@@ -53,7 +50,9 @@ void construct(pointers *p, PE *pe, DWORD sfunc[3], int section_size);
 //----------------------------------------------------------------
 // PE STUB IN HERE!!!!!
 //----------------------------------------------------------------
-void restore(pointers *p, INT_PTR base_offset)
+
+#pragma optimize ("gs",on)
+static void restore(pointers *p, INT_PTR base_offset)
 {
 	
 	IMAGE_IMPORT_DESCRIPTOR *Imports;
@@ -116,11 +115,11 @@ void restore(pointers *p, INT_PTR base_offset)
 		}
 	}
 }
-#pragma optimize ("gst",off)
+#pragma optimize ("",off)
 MARK_END_OF_FUNCTION(restore)
-#pragma optimize ("gst",on)
+#pragma optimize ("gt",on)
 #ifndef DEMO
-void mentry_lzma(pointers *p, INT_PTR base_offset)
+static void mentry_lzma(pointers *p, INT_PTR base_offset)
 {
 	if (p->IsDepacked)return;
 
@@ -129,7 +128,6 @@ void mentry_lzma(pointers *p, INT_PTR base_offset)
 		DWORD * fixup_end = (DWORD*)&p->OriginalImports;
 		while (fixup < fixup_end) *fixup++ += base_offset;
 		DWORD carray = *((DWORD*)p->ocompdata);
-		if (!carray) return;
 		*((DWORD*)p->ocompdata) = 0;
 		compdata *cmpdata = (compdata*)((DWORD)p->ocompdata + sizeof(DWORD));
 		for(int i = 0; i < carray; i++)
@@ -138,9 +136,9 @@ void mentry_lzma(pointers *p, INT_PTR base_offset)
 			{
 				DWORD nlendiff = (DWORD)cmpdata->nlen - (DWORD)cmpdata->ulen;
 				DWORD* workmem = (DWORD*)(*p->VirtualAlloc)(NULL, 0xC4000, MEM_COMMIT, PAGE_READWRITE);
+				(*p->VirtualProtect)((LPVOID)(p->ImageBase + (DWORD)cmpdata->src), (DWORD)cmpdata->nlen, PAGE_READWRITE, &OldP);
 				unsigned char* input_data = (unsigned char*)(p->ImageBase + (DWORD)cmpdata->src + (DWORD)cmpdata->ulen);
 				unsigned char* ucompd = (unsigned char*)(*p->VirtualAlloc)(NULL, cmpdata->nlen, MEM_COMMIT, PAGE_READWRITE);
-				for (int i = 0; i < (DWORD)nlendiff; i++)ucompd[i] = 0;
 				typedef void(_stdcall *tdecomp)(UInt16* workmem,
 					const unsigned char *inStream, SizeT inSize,
 					unsigned char *outStream, SizeT outSize);
@@ -151,13 +149,11 @@ void mentry_lzma(pointers *p, INT_PTR base_offset)
 					tdefilt defilter = (tdefilt)p->codefilt;
 					defilter(ucompd, cmpdata->nlen);
 				}
-				(*p->VirtualProtect)((LPVOID)(p->ImageBase + (DWORD)cmpdata->src), (DWORD)cmpdata->nlen, PAGE_EXECUTE_READWRITE, &OldP);
-
 				while (nlendiff--) input_data[nlendiff] = ucompd[nlendiff];
-
+				cmpdata->ulen = OldP;
 				(*p->VirtualFree)(ucompd, 0, MEM_RELEASE);
 				(*p->VirtualFree)(workmem, 0, MEM_RELEASE);
-				cmpdata->ulen = OldP;
+				
 			}
 			
 			cmpdata++;
@@ -187,13 +183,13 @@ void mentry_lzma(pointers *p, INT_PTR base_offset)
 		}
 		p->IsDepacked = 0x01;
 }
-#pragma optimize ("gst",off)
+#pragma optimize ("",off)
 MARK_END_OF_FUNCTION(mentry_lzma)
-#pragma optimize ("gst",on)
+#pragma optimize ("",on)
 
 #endif // !DEMO
-
-void mentry_fr(pointers *p, INT_PTR base_offset)
+#pragma optimize ("gt",on)
+static void mentry_fr(pointers *p, INT_PTR base_offset)
 {
 	if (p->IsDepacked)return;
 
@@ -202,7 +198,6 @@ void mentry_fr(pointers *p, INT_PTR base_offset)
 	DWORD * fixup_end = (DWORD*)&p->OriginalImports;
 	while (fixup < fixup_end) *fixup++ += base_offset;
 	DWORD carray = *((DWORD*)p->ocompdata);
-	if (!carray) return;
 	*((DWORD*)p->ocompdata) = 0;
 	compdata *cmpdata = (compdata*)((DWORD)p->ocompdata + sizeof(DWORD));
 	for (int i = 0; i < carray; i++)
@@ -212,7 +207,6 @@ void mentry_fr(pointers *p, INT_PTR base_offset)
 			DWORD nlendiff = (DWORD)cmpdata->nlen - (DWORD)cmpdata->ulen;
 			unsigned char* input_data = (unsigned char*)(p->ImageBase + (DWORD)cmpdata->src + (DWORD)cmpdata->ulen);
 			unsigned char* ucompd = (unsigned char*)(*p->VirtualAlloc)(NULL, cmpdata->nlen, MEM_COMMIT, PAGE_READWRITE);
-			for (int i = 0; i < (DWORD)nlendiff; i++)ucompd[i] = 0;
 			typedef int(_stdcall *tdecomp) (PVOID,PVOID);
 			tdecomp decomp = (tdecomp)p->decomp;
 			decomp(ucompd, input_data);
@@ -256,11 +250,11 @@ void mentry_fr(pointers *p, INT_PTR base_offset)
 	}
 	p->IsDepacked = 0x01;
 }
-#pragma optimize ("gst",off)
+#pragma optimize ("",off)
 MARK_END_OF_FUNCTION(mentry_fr)
-#pragma optimize ("gst",on)
+#pragma optimize ("gs",on)
 
-SizeT x86_lzdefilter(Byte *data, SizeT size)
+static SizeT x86_lzdefilter(Byte *data, SizeT size)
 {
 	UInt32 state = 0;
 	UInt32 ip = 0;
@@ -336,17 +330,15 @@ SizeT x86_lzdefilter(Byte *data, SizeT size)
 	state = ((prevPosT > 3) ? 0 : ((prevMask << ((int)prevPosT - 1)) & 0x7));
 	return bufferPos;
 }
-#pragma optimize ("gst",off)
+#pragma optimize ("gs",off)
 MARK_END_OF_FUNCTION(x86_lzdefilter)
-#pragma optimize ("gst",on)
+#pragma optimize ("",on)
 
 //-----------------------------------------------------------------
 // PE ENDS HERE
 //----------------------------------------------------------------
 void functions_lzma(PE *pe)
 {
-	
-
 	pointers p;
 	ZeroMemory(&p, sizeof(pointers));
 
@@ -397,7 +389,7 @@ void functions_lzma(PE *pe)
 	memcpy((LPVOID)p.ocompdata, pe->comparray, pe->scomparray);
 	AddSection(".ML!", psection, psize, NULL, pe);
 
-	sprintf(data, "Decompressor stub is %d bytes...", sfunc);
+	sprintf(data, "Decompressor stub is %d bytes...", psize);
 	message->DoLogMessage(data, ERR_INFO);
 	construct((pointers*) pe->m_sections[pe->int_headers.FileHeader.NumberOfSections - 1].data, pe, sfunc,psize);
 }
@@ -419,22 +411,6 @@ void functions_fr(PE *pe)
 	sfunc[1] = SIZEOF_FUNCTION(restore);
 	sfunc[2] = (DWORD)unpacker_sz;
 	sfunc[3] = SIZEOF_FUNCTION(x86_lzdefilter);
-
-
-	
-	/*
-	DWORD func_size = sfunc[0] + sfunc[1] + sfunc[3];
-	BYTE* data2 = (BYTE*)malloc(func_size);
-	memcpy((LPVOID)data2, (LPVOID)&mentry_fr, sfunc[0]);
-	memcpy((LPVOID)(data2 + sfunc[0]), (LPVOID)&restore, sfunc[1]);
-	memcpy((LPVOID)(data2 + sfunc[0] + sfunc[1]), (LPVOID)&x86_lzdefilter, sfunc[3]);
-	DWORD compressed_data_size;
-	BYTE* compressed_data = compress_fr(data2, func_size, &compressed_data_size);
-	sprintf(data, "Decompressor stub functions is %d bytes...", compressed_data_size);
-	message->DoLogMessage(data, ERR_INFO);
-
-	free(data2);
-	free(compressed_data);*/
 
 
 	if (tls_callbacksnum)
@@ -463,11 +439,6 @@ void functions_fr(PE *pe)
 	memcpy((LPVOID)p.codefilt, (LPVOID)&x86_lzdefilter, sfunc[3]);
 
 	memcpy((LPVOID)p.ocompdata, pe->comparray, pe->scomparray);
-	AddSection(".ML!", psection, psize, NULL, pe);
-
-	sprintf(data, "Decompressor stub is %d bytes...", sfunc);
-	message->DoLogMessage(data, ERR_INFO);
-	construct((pointers*)pe->m_sections[pe->int_headers.FileHeader.NumberOfSections - 1].data, pe, sfunc, psize);
 }
 
 
@@ -494,198 +465,6 @@ void construct(pointers *pt, PE *pe, DWORD sfunc[4], int section_size)
 
 	LogMessage* message = LogMessage::GetSingleton();
 	TCHAR data[256] = { 0 };
-
-
-
-	DWORD vaddress = pe->m_sections[pe->int_headers.FileHeader.NumberOfSections - 1].header.VirtualAddress;
-	DWORD pointer = pe->int_headers.OptionalHeader.ImageBase + vaddress;
-	DWORD entry = pe->int_headers.OptionalHeader.ImageBase + vaddress + sizeof(pointers);
-
-	sprintf(data, "PE stub location is at 0x%04X...", pointer);
-	message->DoLogMessage(data, ERR_INFO);
-	message->DoLogMessage("Generating shellcode...", ERR_INFO);
-	memset(&pt->opcode, 0x00, sizeof(pt->opcode));
-	Entrypoint_Code code(pointer, entry, pe->EntryPoint);
-	memcpy(&pt->opcode,code.getCode(),code.getSize());
-
-
-	pt->mentry = (tmentry)entry;
-	pt->restore = (trestore)(entry + sfunc[0]);
-	pt->decomp = (DWORD)(entry + sfunc[0] + sfunc[1]);
-	pt->codefilt = (DWORD)(entry + sfunc[0] + sfunc[1] + sfunc[2]);
-	pt->ocompdata = entry + sfunc[0] + sfunc[1] + sfunc[2] + sfunc[3];
-
-	DWORD pimports = (DWORD)pe->m_sections[pe->int_headers.FileHeader.NumberOfSections - 1].data + sizeof(pointers) + sfunc[0] + sfunc[1] + sfunc[2] + sfunc[3] + pe->scomparray;
-	DWORD pimportsrva = entry + sfunc[0] + sfunc[1] + sfunc[2] + sfunc[3] + pe->scomparray - pe->int_headers.OptionalHeader.ImageBase;
-
-	sprintf(data, "Building imports at 0x%04X ...", pimportsrva);
-	message->DoLogMessage(data, ERR_INFO);
-
-	char **_dlls = pe->dlls;
-	char **_thunks = pe->thunks;
-	IMAGE_IMPORT_DESCRIPTOR *Imports = NULL;
-	DWORD *Thunks = NULL;
-
-	pe->sdllimports = 0;
-	Imports = (IMAGE_IMPORT_DESCRIPTOR*)(pimports);
-	while (*(*_dlls))
-	{
-		pe->sdllimports += sizeof(IMAGE_IMPORT_DESCRIPTOR); //imports
-		_dlls++;
-	}
-	pe->sdllimports += sizeof(IMAGE_IMPORT_DESCRIPTOR); //zero import
-
-	_dlls = pe->dlls;
-	Thunks = (DWORD*)(pimports + pe->sdllimports);
-
-	DWORD internals_count = 5;
-	DWORD *internals = (DWORD*)(&pt->VirtualAlloc);
-
-	while (*(*_dlls))
-	{
-		Imports->FirstThunk = pimportsrva + pe->sdllimports;
-		while (*(*_thunks))
-		{
-			if (internals_count)
-			{
-				*internals = pe->int_headers.OptionalHeader.ImageBase + pimportsrva + pe->sdllimports;
-				internals++;
-				internals_count--;
-			}
-			pe->sdllimports += sizeof(DWORD); //thunks
-			_thunks++;
-		}
-		pe->sdllimports += sizeof(DWORD); //zero thunk
-		_thunks++;
-		_dlls++;
-		Imports++;
-	}
-
-	_dlls = pe->dlls;
-	_thunks = pe->thunks;
-	Imports = (IMAGE_IMPORT_DESCRIPTOR*)(pimports);
-	while (*(*_dlls))
-	{
-		Imports->Name = pimportsrva + pe->sdllimports;
-		strcpy((char*)(pimports + pe->sdllimports), *_dlls);
-		pe->sdllimports += strlen((char*)*_dlls);//import names
-		while (*(*_thunks))
-		{
-			if (*(*_thunks) == '@')
-			{
-				char * end;
-				*Thunks = strtoul((*_thunks) + 1, &end, 10) + IMAGE_ORDINAL_FLAG;
-			}
-			else
-			{
-				*Thunks = pimportsrva + pe->sdllimports;
-				memset((char*)(pimports + pe->sdllimports), 0, sizeof(WORD));
-				pe->sdllimports += sizeof(WORD); //thunk hints
-				strcpy((char*)(pimports + pe->sdllimports), *_thunks);
-				pe->sdllimports += strlen((char*)*_thunks);//import names
-			}
-			_thunks++;
-			Thunks++;
-		}
-		pe->sdllimports++;
-		_thunks++;
-		_dlls++;
-		Imports++;
-		Thunks++;
-	}
-	pt->OriginalImports = pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
-	pt->OriginalRelocations = pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
-	pt->OriginalRelocationsSize = pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
-	pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress = pimportsrva;
-	pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size = pe->sdllimports;
-
-	DWORD pexports = pimports + pe->sdllimports;
-	DWORD pexportsrva = pimportsrva + pe->sdllimports;
-
-
-
-
-
-	if (pe->sdllexports)
-	{
-
-		sprintf(data, "Building exports at 0x%04X ...", pexportsrva);
-		message->DoLogMessage(data, ERR_INFO);
-
-		PIMAGE_EXPORT_DIRECTORY _dir = (PIMAGE_EXPORT_DIRECTORY)pe->new_exports;
-
-		_dir->Name += pexportsrva;
-		_dir->AddressOfFunctions += pexportsrva;
-		_dir->AddressOfNameOrdinals += pexportsrva;
-
-		DWORD * address = (DWORD *)((DWORD)pe->new_exports + _dir->AddressOfNames);
-
-		for (int i = 0; i < _dir->NumberOfNames; i++)
-		{
-			*address += pexportsrva;
-			address++;
-		}
-
-		_dir->AddressOfNames += pexportsrva;
-
-		memcpy((VOID*)pexports, _dir, pe->sdllexports);
-
-		pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress = pexportsrva;
-	}
-
-
-
-	DWORD ptls = pexports + pe->sdllexports;
-	DWORD tlsrva = pexportsrva + pe->sdllexports;
-	DWORD ptlsindex = ptls + sizeof(IMAGE_TLS_DIRECTORY32);
-	DWORD tlsindexrva = tlsrva + sizeof(IMAGE_TLS_DIRECTORY32);
-	DWORD tlsfakecallback = ptlsindex + sizeof(DWORD);
-	DWORD tlscallbackfakerva= tlsindexrva + sizeof(DWORD);
-	pt->TlsCallbackNew = 0;
-	pt->TlsCallbackBackup = 0;
-	//copy out new TLS callback array, length of old TLS callback array, padded with zeros
-	//in stub, copy out old tls callback array vals to new tls callback array
-	if (pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size)
-	{
-		DWORD * address = (DWORD *)tlsfakecallback;
-		*address = pointer+0x07;
-		pt->TlsCallbackNew = tlscallbackfakerva;
-		pt->TlsCallbackBackup = pImgTlsDir->AddressOfCallBacks - pe->int_headers.OptionalHeader.ImageBase;
-		pImgTlsDir->AddressOfCallBacks = tlscallbackfakerva + pe->int_headers.OptionalHeader.ImageBase;
-		pImgTlsDir->AddressOfIndex = pe->int_headers.OptionalHeader.ImageBase + tlsindexrva;
-		memcpy((IMAGE_TLS_DIRECTORY32*)ptls, pImgTlsDir, sizeof(IMAGE_TLS_DIRECTORY32));
-		sprintf(data, "Building new TLS directory at 0x%04X ...", tlsrva);
-		message->DoLogMessage(data, ERR_INFO);
-
-		pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress = tlsrva;
-		free(pImgTlsDir);
-		
-	}
-	DWORD prelocs = tlsfakecallback + tls_callbacksnum;
-	DWORD prelocsrva = tlscallbackfakerva + tls_callbacksnum;
-	DWORD sizeofrelocs = 0;
-	if (pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size)
-	{
-		sprintf(data, "Building relocations at 0x%04X ...", prelocsrva);
-		message->DoLogMessage(data, ERR_INFO);
-		CRelocBuilder ripper_reloc;
-		ripper_reloc.AddRelocation(vaddress + 1);
-		if (pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size)
-		{	
-			//TLS callback ptr;
-			ripper_reloc.AddRelocation(tlsrva + offsetof(IMAGE_TLS_DIRECTORY32, StartAddressOfRawData));
-			ripper_reloc.AddRelocation(tlsrva + offsetof(IMAGE_TLS_DIRECTORY32, EndAddressOfRawData));
-			ripper_reloc.AddRelocation(tlsrva + offsetof(IMAGE_TLS_DIRECTORY32, AddressOfIndex));
-			ripper_reloc.AddRelocation(tlsrva + offsetof(IMAGE_TLS_DIRECTORY32, AddressOfCallBacks));
-			ripper_reloc.AddRelocation(tlscallbackfakerva);
-		}
-		ripper_reloc.Export((BYTE*)prelocs);
-		sizeofrelocs = ripper_reloc.GetSize();
-		pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress = prelocsrva;
-		pe->int_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = sizeofrelocs;
-		ripper_reloc.DeleteRvaList();
-	}
-	pt->ImageBase = pe->int_headers.OptionalHeader.ImageBase;
 }
 
 

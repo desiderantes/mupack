@@ -690,21 +690,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Public Demo|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Public Packer|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="backend\pack_stub_prv_x86.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Public Demo|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Public Packer|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Packer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Public Demo|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Public Packer|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="backend\pack_utils_x86.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Packer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Public Demo|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug Public Packer|x64'">true</ExcludedFromBuild>
-    </ClCompile>
+    <ClCompile Include="backend\pack.cpp" />
+    <ClCompile Include="backend\pack_stub.cpp" />
     <ClCompile Include="backend\patternfind.cpp" />
     <ClCompile Include="exepacker.cpp" />
     <ClCompile Include="stdafx.cpp">
